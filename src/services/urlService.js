@@ -1,23 +1,30 @@
-import { nanoid, customAlphabet } from "nanoid";
+import { customAlphabet } from "nanoid";
 import { pool } from "../db.js";
 import Sqids from "sqids";
 
+const nano = customAlphabet(
+  process.env.ALPHABET_STRING,
+  Number(process.env.SIZE),
+);
+const codeGenerator = () => nano();
 export const postUrl = async (req, res) => {
   try {
-    const nanoid = customAlphabet(
-      process.env.ALPHABET_STRING,
-      process.env.SIZE,
-    );
-    const code = nanoid();
     const longUrl = req.body.url;
-
-    const { rows } = await pool.query(
-      `INSERT INTO urls (code, long_url) VALUES ($1, $2) RETURNING code`,
-      [code, longUrl],
-    );
-
-    const url = `${process.env.BASE_URL}/${rows[0].code}`;
-    return res.status(201).json(url);
+    const expiresAt = req.body?.expires_at;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const { rows } = await pool.query(
+        `INSERT INTO urls (code, long_url , expires_at) VALUES ($1, $2 , $3)
+         ON CONFLICT (code) DO NOTHING
+         RETURNING code , expires_at`,
+        [codeGenerator(), longUrl, expiresAt],
+      );
+      if (rows.length) {
+        var url = `${process.env.BASE_URL}/${rows[0].code}`;
+        var expire = rows[0].expires_at;
+        return res.status(201).json({ url: url, expires_at: expire });
+      }
+    }
+    return res.status(503).json({ error: "Could not generate a unique code" });
   } catch (error) {
     throw error;
   }
@@ -55,16 +62,20 @@ function toBase62(num) {
 }
 
 export const postUrlCounter = async (req, res) => {
-  const longUrl = req.body.url;
-  const { rows } = await pool.query("SELECT nextval('urls_id_seq') AS id");
-  const id = rows[0].id;
+  try {
+    const longUrl = req.body.url;
+    const { rows } = await pool.query("SELECT nextval('urls_id_seq') AS id");
+    const id = rows[0].id;
 
-  const code = toBase62(id);
+    const code = toBase62(id);
 
-  await pool.query(
-    "INSERT INTO urls (id, code, long_url) VALUES ($1, $2, $3)",
-    [id, code, longUrl],
-  );
-  const url = `${process.env.BASE_URL}/${code}`;
-  return res.status(201).json(url);
+    await pool.query(
+      "INSERT INTO urls (id, code, long_url) VALUES ($1, $2, $3)",
+      [id, code, longUrl],
+    );
+    const url = `${process.env.BASE_URL}/${code}`;
+    return res.status(201).json(url);
+  } catch (e) {
+    throw e;
+  }
 };
