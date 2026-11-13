@@ -1,6 +1,4 @@
 import express from "express";
-import dotenv from "dotenv";
-import { pool } from "./src/db.js";
 import url from "./src/routes/urls.js";
 const app = express();
 
