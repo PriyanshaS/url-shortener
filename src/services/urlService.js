@@ -7,16 +7,17 @@ const nano = customAlphabet(
   Number(process.env.SIZE),
 );
 const codeGenerator = () => nano();
+
 export const postUrl = async (req, res) => {
   try {
     const longUrl = req.body.url;
-    const expiresAt = req.body?.expires_at;
+    const expiresInDays = req.body?.expires_at || process.env.LINK_TTL_DAYS;
     for (let attempt = 0; attempt < 10; attempt++) {
       const { rows } = await pool.query(
-        `INSERT INTO urls (code, long_url , expires_at) VALUES ($1, $2 , $3)
+        `INSERT INTO urls (code, long_url , expires_at) VALUES ($1, $2 , NOW() + make_interval(days => $3::int))
          ON CONFLICT (code) DO NOTHING
          RETURNING code , expires_at`,
-        [codeGenerator(), longUrl, expiresAt],
+        [codeGenerator(), longUrl, expiresInDays],
       );
       if (rows.length) {
         var url = `${process.env.BASE_URL}/${rows[0].code}`;
@@ -37,8 +38,13 @@ export const getRedirectUrl = async (req, res) => {
       `UPDATE urls SET click_count = click_count + 1 where code = $1 and (expires_at IS NULL OR expires_at > NOW()) returning long_url`,
       [code],
     );
-    const longUrl = rows[0].long_url;
-    res.redirect(302, longUrl);
+    if (rows.length) {
+      const longUrl = rows[0].long_url;
+      res.redirect(302, longUrl);
+    }
+    return res
+      .status(500)
+      .json({ error: "Cannot reach this URL as it does not exist anymore" });
   } catch (err) {
     throw err;
   }
