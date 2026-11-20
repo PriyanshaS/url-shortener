@@ -2,6 +2,7 @@ import { customAlphabet } from "nanoid";
 import { pool } from "../db.js";
 import Sqids from "sqids";
 import { getLongUrl } from "./redirectCache.js";
+import { json } from "express";
 
 const nano = customAlphabet(
   process.env.ALPHABET_STRING,
@@ -12,6 +13,12 @@ const codeGenerator = () => nano();
 export const postUrl = async (req, res) => {
   try {
     const longUrl = req.body.url;
+    const validate = validateUrl(longUrl);
+    if (!longUrl || !validate.ok) {
+      return res.status(400).json({
+        error: validate.error,
+      });
+    }
     const expiresInDays = req.body?.expires_at || process.env.LINK_TTL_DAYS;
     for (let attempt = 0; attempt < 10; attempt++) {
       const { rows } = await pool.query(
@@ -28,7 +35,7 @@ export const postUrl = async (req, res) => {
     }
     return res.status(503).json({ error: "Could not generate a unique code" });
   } catch (error) {
-    throw error;
+    return res.status(500).json({ error: error });
   }
 };
 
@@ -39,9 +46,8 @@ export const getRedirectUrl = async (req, res) => {
     if (!longUrl) return res.status(404).send("Not found");
     res.set("Cache-Control", "public, max-age=300");
     res.redirect(302, longUrl);
-  } catch (err) {
-    console.log(`The error is ${err}`);
-    throw err;
+  } catch (error) {
+    return res.status(500).json({ error: error });
   }
 };
 
@@ -54,6 +60,21 @@ function toBase62(num) {
   let n = BigInt(num);
   const sqids = new Sqids({ minLength: 6 });
   return sqids.encode([Number(n)]);
+}
+
+function validateUrl(url) {
+  try {
+    const MAX_LENGTH = 2048;
+    if (typeof url !== "string") return { ok: false, error: "URL is required" };
+    const parsedUrl = new URL(url);
+    if (parsedUrl.length > MAX_LENGTH)
+      return { ok: false, error: "URL is too long" };
+    if (!["http:", "https:"].includes(parsedUrl.protocol))
+      return { ok: false, error: "Only http and https URLs are allowed" };
+    return { ok: true, url: url };
+  } catch (err) {
+    return { ok: false, error: err };
+  }
 }
 
 export const postUrlCounter = async (req, res) => {
@@ -71,6 +92,6 @@ export const postUrlCounter = async (req, res) => {
     const url = `${process.env.BASE_URL}/${code}`;
     return res.status(201).json(url);
   } catch (e) {
-    throw e;
+    return res.status(500).json({ error: e });
   }
 };
