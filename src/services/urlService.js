@@ -1,6 +1,7 @@
 import { customAlphabet } from "nanoid";
 import { pool } from "../db.js";
 import Sqids from "sqids";
+import { getLongUrl } from "./redirectCache.js";
 
 const nano = customAlphabet(
   process.env.ALPHABET_STRING,
@@ -34,18 +35,12 @@ export const postUrl = async (req, res) => {
 export const getRedirectUrl = async (req, res) => {
   try {
     const code = req.params.code;
-    const { rows } = await pool.query(
-      `UPDATE urls SET click_count = click_count + 1 where code = $1 and (expires_at IS NULL OR expires_at > NOW()) returning long_url`,
-      [code],
-    );
-    if (rows.length) {
-      const longUrl = rows[0].long_url;
-      res.redirect(302, longUrl);
-    }
-    return res
-      .status(500)
-      .json({ error: "Cannot reach this URL as it does not exist anymore" });
+    const longUrl = await getLongUrl(code);
+    if (!longUrl) return res.status(404).send("Not found");
+    res.set("Cache-Control", "public, max-age=300");
+    res.redirect(302, longUrl);
   } catch (err) {
+    console.log(`The error is ${err}`);
     throw err;
   }
 };
@@ -57,13 +52,7 @@ export const getUrl = (req, res) => {
 
 function toBase62(num) {
   let n = BigInt(num);
-  let code = "";
   const sqids = new Sqids({ minLength: 6 });
-
-  //   while (n > 0n) {
-  //     code = process.env.ALPHABET_STRING[Number(n % 62n)] + code;
-  //     n = n / 62n;
-  //   }
   return sqids.encode([Number(n)]);
 }
 
