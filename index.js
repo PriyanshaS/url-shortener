@@ -1,6 +1,7 @@
 import express from "express";
 import url from "./src/routes/urls.js";
 import { createLimiter } from "./src/middleware/rateLimiter.js";
+import logger from "./src/middleware/logger.js";
 const app = express();
 
 const port = 8000;
@@ -8,6 +9,7 @@ const port = 8000;
 // Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+app.use(logger);
 app.use("/url/private", createLimiter);
 app.use("/url", url);
 
