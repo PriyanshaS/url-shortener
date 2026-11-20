@@ -1,26 +1,5 @@
 import { pool } from "../db.js";
-import Redis from "ioredis";
-
-const client =
-  process.env.REDIS_HOST && process.env.REDIS_PORT
-    ? new Redis({
-        host: process.env.REDIS_HOST,
-        port: Number(process.env.REDIS_PORT),
-        tls: {},
-        lazyConnect: true,
-        connectTimeout: 3000,
-      })
-    : null;
-
-if (client) {
-  client.on("error", () => {});
-  client.connect().catch((err) => {
-    console.warn(
-      "WARNING !! Cache unavailable; using PostgreSQL:",
-      err.message,
-    );
-  });
-}
+import { client } from "../redis.js";
 
 const memory = new Map();
 const MEMORY_MAX = 10000;
@@ -36,7 +15,9 @@ export async function getLongUrl(code) {
         saveToMemory(code, cached);
         return cached;
       }
-    } catch (err) {}
+    } catch (err) {
+      console.log(err);
+    }
   }
 
   const { rows } = await pool.query(

@@ -40,6 +40,7 @@ export const getRedirectUrl = async (req, res) => {
     res.set("Cache-Control", "public, max-age=300");
     res.redirect(302, longUrl);
   } catch (err) {
+    console.log(`The error is ${err}`);
     throw err;
   }
 };
